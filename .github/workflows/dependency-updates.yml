@@ -69,7 +69,7 @@ jobs:
         run: |
           BRANCH="chore/deps-update-$(date +%Y%m%d-%H%M%S)"
           git fetch origin
-          git checkout -b "$BRANCH" 2>/dev/null || git checkout "$BRANCH"
+          git checkout -b "$BRANCH" origin/main 2>/dev/null || git checkout "$BRANCH"
           echo "branch=$BRANCH" >> $GITHUB_OUTPUT
           echo "Branch: $BRANCH"
 
@@ -115,6 +115,7 @@ Automated dependency update
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           branch: ${{ steps.branch.outputs.branch }}
+          base: main
           delete-branch: false
           title: "chore(deps): weekly dependency updates"
           body: |
