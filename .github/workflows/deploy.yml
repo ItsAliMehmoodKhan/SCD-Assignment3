@@ -37,7 +37,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     outputs:
-      artifact-name: ${{ steps.upload.outputs.artifact-id }}
+      artifact-name: 'public-artifact'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -96,13 +96,12 @@ jobs:
           # Ensure index.html exists for Pages
           if [ ! -f "public/index.html" ] && [ -f "public/download.html" ]; then cp public/download.html public/index.html; fi
 
-      - name: Upload artifact (skip if missing)
+      - name: Upload artifact
         id: upload
-        if: ${{ always() }}
+        continue-on-error: true
         uses: actions/upload-pages-artifact@v3
         with:
           path: ./public
-          if-no-files-found: ignore
 
   integration-tests:
     name: Integration tests
