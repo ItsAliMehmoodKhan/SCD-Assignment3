@@ -11,6 +11,10 @@ on:
         required: false
         default: ''
 
+defaults:
+  run:
+    working-directory: heavens-above
+
 permissions:
   contents: read
   pages: write
@@ -65,7 +69,7 @@ jobs:
         id: upload
         uses: actions/upload-pages-artifact@v3
         with:
-          path: ./public
+          path: heavens-above/public
 
   integration-tests:
     name: Integration tests

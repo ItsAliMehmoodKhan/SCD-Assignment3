@@ -8,6 +8,10 @@ on:
     branches:
       - main
 
+defaults:
+  run:
+    working-directory: heavens-above
+
 permissions:
   contents: read
 
@@ -67,13 +71,13 @@ jobs:
           fi
 
       - name: Upload build artifacts (optional)
-        if: ${{ success() && hashFiles('**/dist/**','**/build/**') != '' }}
+        if: ${{ success() && hashFiles('heavens-above/**/dist/**','heavens-above/**/build/**') != '' }}
         uses: actions/upload-artifact@v4
         with:
           name: build-artifacts-${{ matrix.node }}
           path: |
-            **/dist/**
-            **/build/**
+            heavens-above/**/dist/**
+            heavens-above/**/build/**
           if-no-files-found: ignore
 
   pr-status:

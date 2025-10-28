@@ -6,6 +6,10 @@ on:
       - 'v*.*.*'
   workflow_dispatch: {}
 
+defaults:
+  run:
+    working-directory: heavens-above
+
 permissions:
   contents: read
   pull-requests: write
