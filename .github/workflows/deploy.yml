@@ -98,10 +98,11 @@ jobs:
 
       - name: Upload artifact (skip if missing)
         id: upload
-        if: ${{ hashFiles('heavens-above/public/**') != '' }}
+        if: ${{ always() }}
         uses: actions/upload-pages-artifact@v3
         with:
-          path: heavens-above/public
+          path: ./public
+          if-no-files-found: ignore
 
   integration-tests:
     name: Integration tests

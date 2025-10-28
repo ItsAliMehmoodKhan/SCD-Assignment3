@@ -40,7 +40,7 @@ jobs:
           for f in **/*.md; do
             [ -f "$f" ] || continue
             echo "Checking $f"
-            markdown-link-check -q -c .github/mlc_config.json "$f" || echo "Link issues found in $f"
+            markdown-link-check -q -c '{"ignorePatterns":[{"pattern":"^mailto:"}]}' "$f" || echo "Link issues found in $f"
           done
 
       - name: Find stale branches
