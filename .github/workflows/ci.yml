@@ -1,0 +1,100 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-verify:
+    name: Node ${{ matrix.node }} - install, lint, test, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [16.x, 18.x, 20.x]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Use Node.js ${{ matrix.node }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - name: Install dependencies
+        run: |
+          npm ci || npm install
+
+      - name: Show environment
+        run: |
+          node -v
+          npm -v
+
+      - name: Lint (if configured)
+        run: |
+          npm run lint --if-present
+
+      - name: Test (if configured)
+        run: |
+          npm test --if-present
+
+      - name: Build (if configured)
+        run: |
+          npm run build --if-present
+
+      - name: Verify application starts (best-effort)
+        if: ${{ always() }}
+        run: |
+          if npm run | grep -q " start"; then
+            echo "Start script found; performing a dry run"
+            timeout 5s npm run start || echo "Start dry run finished (or timed out)"
+          else
+            echo "No start script; skipping runtime check"
+          fi
+
+      - name: Upload build artifacts (optional)
+        if: ${{ success() && hashFiles('**/dist/**','**/build/**') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts-${{ matrix.node }}
+          path: |
+            **/dist/**
+            **/build/**
+          if-no-files-found: ignore
+
+  pr-status:
+    name: PR Status Summary
+    needs: build-and-verify
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - name: Post success/failure summary
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const core = require('@actions/core');
+            const conclusion = '${{ needs.build-and-verify.result }}';
+            const body = conclusion === 'success'
+              ? '✅ CI passed on all matrix nodes.'
+              : `❌ CI did not pass. Result: ${conclusion}`;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              body,
+            });
+
