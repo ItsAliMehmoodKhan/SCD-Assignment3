@@ -61,7 +61,6 @@ jobs:
         uses: actions/upload-pages-artifact@v3
         with:
           path: site
-          if-no-files-found: ignore
 
   deploy-docs:
     runs-on: ubuntu-latest
