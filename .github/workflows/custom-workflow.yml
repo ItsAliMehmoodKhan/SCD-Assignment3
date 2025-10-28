@@ -11,6 +11,10 @@ permissions:
   contents: read
   pull-requests: write
 
+defaults:
+  run:
+    working-directory: heavens-above
+
 jobs:
   generate-release-notes:
     runs-on: ubuntu-latest

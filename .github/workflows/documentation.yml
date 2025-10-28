@@ -15,6 +15,10 @@ permissions:
   pages: write
   id-token: write
 
+defaults:
+  run:
+    working-directory: heavens-above
+
 jobs:
   build-docs:
     runs-on: ubuntu-latest

@@ -27,6 +27,10 @@ concurrency:
   group: pages-deploy
   cancel-in-progress: false
 
+defaults:
+  run:
+    working-directory: heavens-above
+
 jobs:
   build:
     name: Build artifact
