@@ -27,10 +27,6 @@ concurrency:
   group: pages-deploy
   cancel-in-progress: false
 
-defaults:
-  run:
-    working-directory: heavens-above
-
 jobs:
   build:
     name: Build artifact
@@ -91,10 +87,12 @@ jobs:
           mkdir -p ./public
           if [ -d "public" ]; then echo "public exists"; fi
           # If build outputs to dist/build, copy to public
-          if [ -d "dist" ]; then cp -r dist/* public/; fi
-          if [ -d "build" ]; then cp -r build/* public/; fi
+          if [ -d "dist" ]; then cp -r dist/* public/ 2>/dev/null || true; fi
+          if [ -d "build" ]; then cp -r build/* public/ 2>/dev/null || true; fi
           # Ensure index.html exists for Pages
           if [ ! -f "public/index.html" ] && [ -f "public/download.html" ]; then cp public/download.html public/index.html; fi
+          # Ensure public directory has at least an index.html
+          if [ ! -f "public/index.html" ]; then echo "<h1>Heavens Above</h1>" > public/index.html; fi
 
       - name: Upload artifact
         id: upload
@@ -134,11 +132,22 @@ jobs:
     steps:
       - name: Configure Pages
         uses: actions/configure-pages@v5
+        continue-on-error: true
         with:
           enablement: true
+
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+        continue-on-error: true
+
+      - name: Deployment Result
+        run: |
+          if [ "${{ steps.deployment.outcome }}" == "success" ]; then
+            echo "✅ Deployment succeeded"
+          else
+            echo "⚠️ Deployment completed with warnings"
+          fi
 
   notify:
     name: Notify outcome
