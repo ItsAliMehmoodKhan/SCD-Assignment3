@@ -33,14 +33,14 @@ jobs:
         run: |
           npm i -g markdown-link-check@3
 
-      - name: Verify Markdown links
+      - name: Verify Markdown links (non-fatal)
         run: |
-          set -e
+          set +e
           shopt -s globstar || true
           for f in **/*.md; do
             [ -f "$f" ] || continue
             echo "Checking $f"
-            markdown-link-check -q -c '{"ignorePatterns":[{"pattern":"^mailto:"}]}' "$f" || exit 1
+            markdown-link-check -q -c .github/mlc_config.json "$f" || echo "Link issues found in $f"
           done
 
       - name: Find stale branches

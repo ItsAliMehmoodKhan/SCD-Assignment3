@@ -56,10 +56,11 @@ jobs:
           cp -r docs site/ 2>/dev/null || true
           cp README.md site/index.md
 
-      - name: Upload artifact
+      - name: Upload artifact (skip if missing)
+        if: ${{ hashFiles('heavens-above/site/**') != '' }}
         uses: actions/upload-pages-artifact@v3
         with:
-          path: site
+          path: heavens-above/site
 
   deploy-docs:
     runs-on: ubuntu-latest

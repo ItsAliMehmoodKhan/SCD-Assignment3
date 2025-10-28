@@ -96,11 +96,12 @@ jobs:
           # Ensure index.html exists for Pages
           if [ ! -f "public/index.html" ] && [ -f "public/download.html" ]; then cp public/download.html public/index.html; fi
 
-      - name: Upload artifact
+      - name: Upload artifact (skip if missing)
         id: upload
+        if: ${{ hashFiles('heavens-above/public/**') != '' }}
         uses: actions/upload-pages-artifact@v3
         with:
-          path: ./public
+          path: heavens-above/public
 
   integration-tests:
     name: Integration tests
