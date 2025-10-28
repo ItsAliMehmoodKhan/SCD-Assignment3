@@ -10,6 +10,7 @@ on:
 permissions:
   contents: read
   issues: write
+  pull-requests: read
 
 jobs:
   maintenance:
@@ -18,6 +19,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Node setup
         uses: actions/setup-node@v4
@@ -26,66 +29,114 @@ jobs:
 
       - name: Install link checker
         run: |
-          npm install -g markdown-link-check@3
+          npm install -g markdown-link-check@3 || true
 
       - name: Verify Markdown links (non-fatal)
         run: |
           find . -name "*.md" -type f | while read f; do
             echo "Checking $f"
             markdown-link-check -q -c '{"ignorePatterns":[{"pattern":"^mailto:"}]}' "$f" || echo "Link issues found in $f"
-          done
+          done || true
 
-      - name: Find stale branches
-        id: stale
+      - name: Find and report stale branches
         uses: actions/github-script@v7
+        continue-on-error: true
+        id: find_stale
         with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const { data: branches } = await github.repos.listBranches({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              per_page: 100,
-            });
-            const now = Date.now();
-            const stale = [];
-            for (const b of branches) {
-              const { data: commit } = await github.repos.getCommit({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                ref: b.commit.sha,
+            const { repo, owner } = context;
+            console.log(`📋 Checking branches in ${owner}/${repo}`);
+            
+            try {
+              const { data: branches } = await github.rest.repos.listBranches({
+                owner,
+                repo,
+                per_page: 100,
               });
-              const ageDays = Math.floor((now - new Date(commit.commit.author.date).getTime()) / (1000*60*60*24));
-              if (ageDays > 90 && !b.protected) stale.push({ name: b.name, ageDays });
+              
+              console.log(`Found ${branches.length} branches`);
+              const now = Date.now();
+              const stale = [];
+              
+              for (const b of branches) {
+                try {
+                  const { data: commit } = await github.rest.repos.getCommit({
+                    owner,
+                    repo,
+                    ref: b.commit.sha,
+                  });
+                  
+                  const commitDate = new Date(commit.commit.author.date);
+                  const ageDays = Math.floor((now - commitDate.getTime()) / (1000 * 60 * 60 * 24));
+                  
+                  if (ageDays > 90 && !b.protected) {
+                    stale.push({ name: b.name, ageDays });
+                    console.log(`Found stale branch: ${b.name} (${ageDays} days old)`);
+                  }
+                } catch (err) {
+                  console.log(`Warning: Could not check branch ${b.name}: ${err.message}`);
+                }
+              }
+              
+              console.log(`Total stale branches: ${stale.length}`);
+              core.setOutput('stale_branches', JSON.stringify(stale));
+              core.setOutput('stale_count', stale.length.toString());
+            } catch (error) {
+              console.error('Error listing branches:', error.message);
+              core.setOutput('stale_branches', '[]');
+              core.setOutput('stale_count', '0');
             }
-            core.setOutput('stale', JSON.stringify(stale));
 
       - name: Create maintenance report
         uses: actions/github-script@v7
+        continue-on-error: true
         with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const stale = JSON.parse(process.env.STALE || '[]');
+            const { repo, owner } = context;
+            const staleInput = '${{ steps.find_stale.outputs.stale_branches }}' || '[]';
+            let stale = [];
+            
+            try {
+              stale = JSON.parse(staleInput);
+            } catch (e) {
+              console.log('Could not parse stale branches, continuing with empty list');
+              stale = [];
+            }
+            
+            const now = new Date();
+            const reportDate = now.toISOString().split('T')[0];
             const lines = [
-              `Daily maintenance report for ${new Date().toISOString()}`,
+              `# 🔧 Maintenance Report - ${reportDate}`,
               '',
-              'Stale branches (>90 days):',
-              ...stale.map(s => `- ${s.name} (${s.ageDays} days)`),
-              stale.length === 0 ? '- None' : '',
-            ].filter(Boolean);
+              `Repository: **${owner}/${repo}**`,
+              `Generated: ${now.toISOString()}`,
+              '',
+              '## Stale Branches (>90 days old)',
+              stale.length === 0 
+                ? '✅ No stale branches found' 
+                : stale.map(s => `- \`${s.name}\` (${s.ageDays} days)`).join('\n'),
+              '',
+              '---',
+              '*This is an automated maintenance report*'
+            ];
+            
             try {
               await github.rest.issues.create({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                title: `Automated maintenance report - ${new Date().toISOString()}`,
+                owner,
+                repo,
+                title: `📋 Maintenance report - ${reportDate}`,
                 body: lines.join('\n'),
-                labels: ['automation','maintenance']
+                labels: ['automation', 'maintenance']
               });
               console.log('✅ Maintenance report created');
             } catch (error) {
-              console.log(`⚠️ Could not create report: ${error.message}`);
+              console.log(`Note: Could not create issue (may already exist): ${error.message}`);
             }
-        env:
-          STALE: ${{ steps.stale.outputs.stale }}
 
-      - name: Cleanup temporary files
+      - name: Cleanup and summary
+        if: always()
         run: |
-          echo "✅ Cleanup complete"
-
+          echo "✅ Maintenance job completed"
+          echo "Total stale branches found: ${{ steps.find_stale.outputs.stale_count }}"
