@@ -97,12 +97,7 @@ jobs:
         if: steps.update.outputs.has_changes == 'true'
         run: |
           git add package.json package-lock.json npm-shrinkwrap.json 2>/dev/null || true
-          git commit -m "chore(deps): weekly dependency updates
-
-Automated dependency update
-- Updated packages to latest minor/patch versions
-- Ran tests to verify compatibility
-- Review for breaking changes" || echo "⚠️ Nothing to commit"
+          git commit -m "chore(deps): weekly dependency updates" || echo "⚠️ Nothing to commit"
 
       - name: Push branch
         if: steps.update.outputs.has_changes == 'true'
