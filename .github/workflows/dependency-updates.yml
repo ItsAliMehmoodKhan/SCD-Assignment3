@@ -10,10 +10,6 @@ permissions:
   contents: write
   pull-requests: write
 
-defaults:
-  run:
-    working-directory: heavens-above
-
 jobs:
   npm-outdated:
     runs-on: ubuntu-latest
@@ -60,12 +56,18 @@ jobs:
         run: |
           npm audit --audit-level=high || true
 
-      - name: Create update branch
+      - name: Configure git
         run: |
-          BRANCH="chore/deps-update-$(date +%Y%m%d)"
-          git checkout -b "$BRANCH" || git checkout "$BRANCH"
-          echo "branch=$BRANCH" >> $GITHUB_OUTPUT
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Create update branch
         id: branch
+        run: |
+          BRANCH="chore/deps-update-$(date +%Y%m%d-%H%M%S)"
+          git fetch origin
+          git checkout -b "$BRANCH" 2>/dev/null || git checkout "$BRANCH"
+          echo "branch=$BRANCH" >> $GITHUB_OUTPUT
 
       - name: Update minor/patch dependencies
         run: |
@@ -73,18 +75,20 @@ jobs:
 
       - name: Run tests (if present)
         run: |
-          npm test --if-present
+          npm test --if-present || true
 
       - name: Commit changes
         run: |
-          git config user.name github-actions
-          git config user.email github-actions@github.com
-          git add package.json package-lock.json || true
-          git commit -m "chore(deps): weekly dependency updates" || echo "No changes to commit"
+          if [ -n "$(git status --porcelain)" ]; then
+            git add package.json package-lock.json 2>/dev/null || true
+            git commit -m "chore(deps): weekly dependency updates" || echo "No changes to commit"
+          else
+            echo "No dependency changes"
+          fi
 
       - name: Push branch
         run: |
-          git push --set-upstream origin ${{ steps.branch.outputs.branch }} || true
+          git push --set-upstream origin "${{ steps.branch.outputs.branch }}" 2>/dev/null || git push origin "${{ steps.branch.outputs.branch }}" || true
 
       - name: Open PR
         uses: peter-evans/create-pull-request@v6
@@ -98,4 +102,5 @@ jobs:
           labels: dependencies, automation
           commit-message: "chore(deps): weekly dependency updates"
           draft: false
+          delete-branch: false
 

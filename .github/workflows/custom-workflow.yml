@@ -8,12 +8,8 @@ on:
   workflow_call: {}
 
 permissions:
-  contents: read
+  contents: write
   pull-requests: write
-
-defaults:
-  run:
-    working-directory: heavens-above
 
 jobs:
   generate-release-notes:
@@ -23,27 +19,60 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Check if release exists
+        id: check_release
+        uses: actions/github-script@v7
+        with:
+          script: |
+            try {
+              const tag = context.ref.replace('refs/tags/', '');
+              await github.rest.repos.getReleaseByTag({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                tag,
+              });
+              core.setOutput('exists', 'true');
+            } catch (error) {
+              core.setOutput('exists', 'false');
+            }
+
       - name: Generate Release Notes
         id: notes
         uses: release-drafter/release-drafter@v6
+        continue-on-error: true
         with:
           disable-autolabeler: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Comment on tag with notes
+      - name: Create Release
+        if: steps.check_release.outputs.exists == 'false'
         uses: actions/github-script@v7
         with:
           script: |
-            const tag = process.env.GITHUB_REF_NAME;
-            const body = `Release notes for ${tag} are available in the latest release draft.`;
-            await github.repos.createRelease({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              tag_name: tag,
-              name: tag,
-              body,
-              draft: false,
-              prerelease: false,
-            });
+            const tag = context.ref.replace('refs/tags/', '');
+            const body = `Release notes for ${tag}`;
+            try {
+              await github.rest.repos.createRelease({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                tag_name: tag,
+                name: tag,
+                body: body,
+                draft: false,
+                prerelease: false,
+              });
+              console.log(`✅ Release created for ${tag}`);
+            } catch (error) {
+              console.log(`⚠️ Release may already exist: ${error.message}`);
+            }
+
+      - name: Release Summary
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const tag = context.ref.replace('refs/tags/', '');
+            core.summary.addHeading('Release Created');
+            core.summary.addRaw(`Tag: ${tag}`);
+            await core.summary.write();
 

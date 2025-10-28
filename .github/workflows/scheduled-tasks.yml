@@ -4,17 +4,12 @@ on:
   schedule:
     - cron: '0 2 * * *'
   workflow_dispatch: {}
-  # Allow calling from other workflows and manual visibility
   workflow_call:
     secrets: {}
 
 permissions:
   contents: read
   issues: write
-
-defaults:
-  run:
-    working-directory: heavens-above
 
 jobs:
   maintenance:
@@ -31,14 +26,11 @@ jobs:
 
       - name: Install link checker
         run: |
-          npm i -g markdown-link-check@3
+          npm install -g markdown-link-check@3
 
       - name: Verify Markdown links (non-fatal)
         run: |
-          set +e
-          shopt -s globstar || true
-          for f in **/*.md; do
-            [ -f "$f" ] || continue
+          find . -name "*.md" -type f | while read f; do
             echo "Checking $f"
             markdown-link-check -q -c '{"ignorePatterns":[{"pattern":"^mailto:"}]}' "$f" || echo "Link issues found in $f"
           done
@@ -78,17 +70,22 @@ jobs:
               ...stale.map(s => `- ${s.name} (${s.ageDays} days)`),
               stale.length === 0 ? '- None' : '',
             ].filter(Boolean);
-            await github.rest.issues.create({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              title: 'Automated maintenance report',
-              body: lines.join('\n'),
-              labels: ['automation','maintenance']
-            });
+            try {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: `Automated maintenance report - ${new Date().toISOString()}`,
+                body: lines.join('\n'),
+                labels: ['automation','maintenance']
+              });
+              console.log('✅ Maintenance report created');
+            } catch (error) {
+              console.log(`⚠️ Could not create report: ${error.message}`);
+            }
         env:
           STALE: ${{ steps.stale.outputs.stale }}
 
       - name: Cleanup temporary files
         run: |
-          echo "Cleanup complete"
+          echo "✅ Cleanup complete"
 
