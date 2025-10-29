@@ -6,33 +6,121 @@ on:
   pull_request:
     branches: [ main ]
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  node-build:
+  build-and-verify:
+    name: Node ${{ matrix.node }} - install, lint, test, build
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
+      fail-fast: false
       matrix:
-        node-version: [18.x]
+        node: [16.x, 18.x, 20.x]
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: Detect lockfile
+        id: lock
+        run: |
+          if [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ] || [ -f yarn.lock ]; then
+            echo "has_lock=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_lock=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Setup Node.js ${{ matrix.node }}
         uses: actions/setup-node@v4
         with:
-          node-version: ${{ matrix.node-version }}
+          node-version: ${{ matrix.node }}
+          cache: npm
 
       - name: Install dependencies
-        run: npm install
-
-      - name: Optional build
-        run: npm run build --if-present
-
-      - name: Optional tests
-        run: npm test --if-present
-
-      - name: Verify environment
         run: |
-          node -v
-          npm -v
-          echo "✅ CI completed successfully."
+          if [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ]; then
+            npm ci || npm install
+          else
+            npm install
+          fi
+
+      - name: Show environment
+        run: |
+          echo "Node version: $(node -v)"
+          echo "NPM version: $(npm -v)"
+          echo "Available npm scripts:"
+          npm run
+
+      - name: Lint (if available)
+        run: |
+          if npm run | grep -q "lint"; then
+            npm run lint
+          else
+            echo "No lint script found — skipping."
+          fi
+
+      - name: Test (if available)
+        run: |
+          if npm run | grep -q "test"; then
+            npm test
+          else
+            echo "No test script found — skipping."
+          fi
+
+      - name: Build (if available)
+        run: |
+          if npm run | grep -q "build"; then
+            npm run build
+          else
+            echo "No build script found — skipping."
+          fi
+
+      - name: Verify app starts (best-effort)
+        if: ${{ always() }}
+        run: |
+          if npm run | grep -q "start"; then
+            echo "Start script found — testing for 5s"
+            timeout 5s npm run start || echo "Dry run done (or timed out)"
+          else
+            echo "No start script found — skipping start check."
+          fi
+
+      - name: Upload build artifacts (optional)
+        if: ${{ success() && hashFiles('**/dist/**','**/build/**') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts-${{ matrix.node }}
+          path: |
+            **/dist/**
+            **/build/**
+          if-no-files-found: ignore
+
+  pr-status:
+    name: PR Status Summary
+    needs: build-and-verify
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'pull_request' }}
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Post success/failure summary
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const result = '${{ needs.build-and-verify.result }}';
+            const body = result === 'success'
+              ? '✅ CI passed on all matrix nodes.'
+              : `❌ CI failed. Result: ${result}`;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              body,
+            });
