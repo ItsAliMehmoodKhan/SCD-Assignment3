@@ -1,0 +1,80 @@
+name: Code Review
+
+on:
+  pull_request:
+    branches: [ main ]
+    types: [opened, synchronize, reopened]
+  workflow_dispatch: {}
+
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  eslint-prettier:
+    name: Lint & Style
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install
+        run: npm ci || npm install
+      - name: Run ESLint if present
+        run: |
+          if npm run | grep -q "lint"; then
+            npm run lint
+          else
+            echo "No lint script defined; skipping ESLint"
+          fi
+      - name: Prettier check if present
+        run: |
+          if npx --yes prettier -v >/dev/null 2>&1; then
+            npx --yes prettier "**/*.{js,ts,md,json,yml,yaml}" -c || true
+          fi
+
+  codeql:
+    name: CodeQL Analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [ 'javascript' ]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{matrix.language}}"
+
+  block-on-failure:
+    name: Require checks
+    runs-on: ubuntu-latest
+    needs: [eslint-prettier, codeql]
+    if: ${{ always() }}
+    steps:
+      - name: Fail if any job failed
+        run: |
+          if [ "${{ needs.eslint-prettier.result }}" != "success" ] || [ "${{ needs.codeql.result }}" != "success" ]; then
+            echo "One or more required checks failed" >&2
+            exit 1
+          else
+            echo "All required checks passed"
+          fi
+
